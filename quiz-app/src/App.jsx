@@ -1,152 +1,164 @@
 import { useEffect, useState } from "react"
+import { onAuthStateChanged, signOut } from "firebase/auth"
+import { auth } from "./firebase"
+
 import QuizStart from "./components/QuizStart"
 import QuestionCard from "./components/QuestionCard"
 import ScoreSummary from "./components/ScoreSummary"
 import QuizHistory from "./components/QuizHistory"
-import { fetchCategories, fetchQuestions } from "./utils/api"
+import Auth from "./components/Auth"
 
 export default function App() {
+  /* ================= AUTH ================= */
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser)
+      setAuthLoading(false)
+    })
+    return unsub
+  }, [])
+
+  /* ================= THEME ================= */
+  const [dark, setDark] = useState(false)
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark)
+  }, [dark])
+
+  /* ================= QUIZ STATE ================= */
   const [categories, setCategories] = useState([])
   const [questions, setQuestions] = useState([])
   const [current, setCurrent] = useState(0)
   const [score, setScore] = useState(0)
   const [answers, setAnswers] = useState([])
   const [started, setStarted] = useState(false)
+  const [finished, setFinished] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [dark, setDark] = useState(false)
-  const [timeLeft, setTimeLeft] = useState(15)
+
+  /* ================= HISTORY ================= */
+  const storageKey = user ? `quizHistory_${user.uid}` : null
+
+  const [history, setHistory] = useState([])
   const [showHistory, setShowHistory] = useState(false)
 
-  // ✅ HISTORY STATE (source of truth)
-  const [history, setHistory] = useState(() => {
-    return JSON.parse(localStorage.getItem("quizHistory")) || []
-  })
-
-  /* -------------------- LOAD CATEGORIES -------------------- */
   useEffect(() => {
-    fetchCategories().then(setCategories)
+    if (storageKey) {
+      const saved = JSON.parse(localStorage.getItem(storageKey)) || []
+      setHistory(saved)
+    }
+  }, [storageKey])
+
+  /* ================= FETCH CATEGORIES ================= */
+  useEffect(() => {
+    fetch("https://opentdb.com/api_category.php")
+      .then((res) => res.json())
+      .then((data) => setCategories(data.trivia_categories))
   }, [])
 
-  /* -------------------- SAVE HISTORY ON QUIZ END -------------------- */
-  useEffect(() => {
-    if (current === questions.length && questions.length > 0) {
-      const newEntry = {
-        category: questions[0]?.category || "Unknown",
-        score,
-        total: questions.length,
-        date: new Date().toLocaleDateString(),
-        partial: answers.length < questions.length,
-      }
+  /* ================= START QUIZ ================= */
+  const startQuiz = async ({ amount, category, difficulty }) => {
+    setLoading(true)
+    setScore(0)
+    setCurrent(0)
+    setAnswers([])
+    setFinished(false)
 
-      const updatedHistory = [...history, newEntry]
-      setHistory(updatedHistory)
-      localStorage.setItem("quizHistory", JSON.stringify(updatedHistory))
-    }
-  }, [current])
+    const res = await fetch(
+      `https://opentdb.com/api.php?amount=${amount}&category=${category}&difficulty=${difficulty}&type=multiple`
+    )
+    const data = await res.json()
 
-  /* -------------------- TIMER -------------------- */
-  useEffect(() => {
-    if (!started || current >= questions.length) return
-
-    setTimeLeft(15)
-    const timer = setInterval(() => {
-      setTimeLeft((t) => (t <= 1 ? 0 : t - 1))
-    }, 1000)
-
-    return () => clearInterval(timer)
-  }, [current, started])
-
-  /* -------------------- QUIZ LOGIC -------------------- */
-  const startQuiz = async (settings) => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const data = await fetchQuestions(settings)
-      if (!data.length) throw new Error("No questions available")
-
-      setQuestions(data)
-      setStarted(true)
-      setCurrent(0)
-      setScore(0)
-      setAnswers([])
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
+    setQuestions(data.results)
+    setStarted(true)
+    setLoading(false)
   }
 
-  const submitAnswer = (answer) => {
-    if (current >= questions.length) return
+  /* ================= ANSWER ================= */
+  const handleAnswer = (selected) => {
+    if (!questions[current]) return
 
-    const correctAnswer = questions[current].correct_answer
-    const correct = correctAnswer === answer
-
-    if (correct) setScore((s) => s + 1)
+    const correct = questions[current].correct_answer
+    if (selected === correct) setScore((s) => s + 1)
 
     setAnswers((prev) => [
       ...prev,
       {
         question: questions[current].question,
-        selected: answer,
         correct,
-        correct_answer: correctAnswer,
+        selected,
       },
     ])
 
-    setCurrent((c) => c + 1)
+    if (current + 1 < questions.length) {
+      setCurrent((c) => c + 1)
+    } else {
+      finishQuiz()
+    }
   }
 
-  const quitQuiz = () => {
-    setCurrent(questions.length)
-  }
-
-  const restart = () => {
+  /* ================= FINISH QUIZ ================= */
+  const finishQuiz = () => {
+    setFinished(true)
     setStarted(false)
-    setQuestions([])
-    setCurrent(0)
-    setScore(0)
-    setAnswers([])
+
+    const newEntry = {
+      date: new Date().toLocaleString(),
+      score,
+      total: questions.length,
+      category: questions[0]?.category || "Unknown",
+    }
+
+    const updated = [...history, newEntry]
+    setHistory(updated)
+    localStorage.setItem(storageKey, JSON.stringify(updated))
   }
 
-  /* -------------------- HISTORY DELETE -------------------- */
+  /* ================= DELETE HISTORY ================= */
   const deleteHistoryItem = (index) => {
-    const updatedHistory = history.filter((_, i) => i !== index)
-    setHistory(updatedHistory)
-    localStorage.setItem("quizHistory", JSON.stringify(updatedHistory))
+    const updated = history.filter((_, i) => i !== index)
+    setHistory(updated)
+    localStorage.setItem(storageKey, JSON.stringify(updated))
   }
 
-  /* -------------------- UI -------------------- */
-  const toggleDark = () => setDark((d) => !d)
-  const toggleHistory = () => setShowHistory((s) => !s)
+  /* ================= AUTH LOADING ================= */
+  if (authLoading) {
+    return <p className="text-center mt-20">Loading...</p>
+  }
 
-  const containerClass = dark
-    ? "min-h-screen bg-gray-900 text-white p-4"
-    : "min-h-screen bg-blue-100 text-blue-900 p-4"
+  /* ================= NOT LOGGED IN ================= */
+  if (!user) {
+    return <Auth />
+  }
 
-  const progressPercent =
-    questions.length > 0 ? (current / questions.length) * 100 : 0
-
+  /* ================= UI ================= */
   return (
-    <div className={containerClass}>
-      {/* Dark Mode Toggle */}
-      <div className="flex justify-end mb-6">
-        <button
-          onClick={toggleDark}
-          className={`px-4 py-2 rounded border ${
-            dark ? "bg-gray-700 text-white" : "bg-white"
-          }`}
-        >
-          {dark ? "Light Mode" : "Dark Mode"}
-        </button>
+    <div className={`min-h-screen p-4 ${dark ? "bg-gray-900 text-white" : "bg-blue-50 text-blue-900"}`}>
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Quiz App</h1>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => setDark((d) => !d)}
+            className="px-3 py-1 rounded bg-gray-600 text-white"
+          >
+            {dark ? "Light" : "Dark"}
+          </button>
+
+          <button
+            onClick={() => signOut(auth)}
+            className="px-3 py-1 rounded bg-red-600 text-white"
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
-      {error && <p className="text-red-500 text-center">{error}</p>}
-
-      {/* START SCREEN */}
-      {!started && (
+      {/* Quiz Start & History */}
+      {!started && !finished && (
         <>
           <QuizStart
             categories={categories}
@@ -155,13 +167,10 @@ export default function App() {
             dark={dark}
           />
 
-          {/* SPACING FIX */}
-          <div className="flex justify-center mt-8 mb-6">
+          <div className="flex justify-center mt-6 mb-6">
             <button
-              onClick={toggleHistory}
-              className={`px-4 py-2 rounded ${
-                dark ? "bg-gray-700" : "bg-blue-600 text-white"
-              }`}
+              onClick={() => setShowHistory((s) => !s)}
+              className="px-4 py-2 rounded bg-blue-600 text-white"
             >
               {showHistory ? "Hide History" : "Show History"}
             </button>
@@ -170,49 +179,34 @@ export default function App() {
           {showHistory && (
             <QuizHistory
               history={history}
-              onDelete={deleteHistoryItem}
               dark={dark}
+              onDelete={deleteHistoryItem}
             />
           )}
         </>
       )}
 
-      {/* QUIZ */}
-      {started && current < questions.length && (
-        <>
-          <div className="max-w-xl mx-auto mb-2 bg-gray-300 rounded h-3">
-            <div
-              className={`h-3 rounded ${dark ? "bg-green-500" : "bg-blue-600"}`}
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-
-          <div className="max-w-xl mx-auto mb-4 flex justify-between">
-            <span>Time Left: {timeLeft}s</span>
-            <button
-              onClick={quitQuiz}
-              className="px-3 py-1 bg-red-600 text-white rounded"
-            >
-              Quit
-            </button>
-          </div>
-
-          <QuestionCard
-            question={questions[current]}
-            onAnswer={submitAnswer}
-            dark={dark}
-            timeLeft={timeLeft}
-          />
-        </>
+      {/* Quiz */}
+      {started && (
+        <QuestionCard
+          question={questions[current]}
+          index={current}
+          total={questions.length}
+          onAnswer={handleAnswer}
+          dark={dark}
+        />
       )}
 
-      {/* SCORE SUMMARY */}
-      {started && current >= questions.length && (
+      {/* Results */}
+      {finished && (
         <ScoreSummary
           score={score}
           total={questions.length}
           answers={answers}
-          onRestart={restart}
+          onRestart={() => {
+            setFinished(false)
+            setStarted(false)
+          }}
           dark={dark}
         />
       )}
