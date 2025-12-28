@@ -1,33 +1,34 @@
 import { useEffect, useState } from "react"
 
 export default function QuestionCard({ question, onAnswer, dark, timeLeft }) {
+  if (!question) return null
+
   const [selected, setSelected] = useState(null)
   const [disabled, setDisabled] = useState(false)
   const [options, setOptions] = useState([])
 
   // Prepare options once per question
   useEffect(() => {
-    const shuffled = [...question.incorrect_answers, question.correct_answer].sort(() => Math.random() - 0.5)
+    const shuffled = [...question.incorrect_answers, question.correct_answer]
+      .sort(() => Math.random() - 0.5)
     setOptions(shuffled)
     setSelected(null)
     setDisabled(false)
   }, [question])
 
-  // Auto-disable buttons when timer ends
+  // Auto-submit when timer ends
   useEffect(() => {
-    if (timeLeft === 0 && !disabled) {
-      setDisabled(true)
-      setTimeout(() => {
-        onAnswer(null) // auto-submit
-      }, 500)
-    }
-  }, [timeLeft, onAnswer, disabled])
+  if (timeLeft === 0 && !disabled) {
+    setDisabled(true)
+    onAnswer(null)
+  }
+}, [timeLeft, disabled, onAnswer])
 
   const handleClick = (opt) => {
     if (disabled) return
     setSelected(opt)
     setDisabled(true)
-    setTimeout(() => onAnswer(opt), 500)
+    onAnswer(opt)
   }
 
   return (
@@ -36,19 +37,27 @@ export default function QuestionCard({ question, onAnswer, dark, timeLeft }) {
         dark ? "bg-gray-800 text-white" : "bg-white text-blue-900"
       }`}
     >
-      <h2 className="text-xl font-bold" dangerouslySetInnerHTML={{ __html: question.question }} />
+      <h2
+        className="text-xl font-bold"
+        dangerouslySetInnerHTML={{ __html: question.question }}
+      />
+
+      {/* ✅ TIMER DISPLAY */}
+      <p className="text-sm font-semibold">
+        ⏱ Time left: {timeLeft}s
+      </p>
 
       <div className="space-y-2">
-        {options.map((opt) => (
+        {options.map((opt, idx) => (
           <button
-            key={opt}
+            key={idx}
             onClick={() => handleClick(opt)}
             disabled={disabled}
-            className={`w-full border p-2 rounded text-left ${
-              dark
-                ? "bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50"
-                : "bg-white text-blue-900 hover:bg-blue-100 disabled:opacity-50"
-            } ${selected === opt ? "ring-2 ring-yellow-400" : ""}`}
+           className={`w-full border p-3 rounded text-left select-none cursor-pointer transition-colors
+           ${disabled ? "opacity-50 cursor-not-allowed" : ""}  ${dark  ? "bg-gray-700 text-white hover:bg-gray-600"
+            : "bg-white text-blue-900 hover:bg-blue-100"}
+  ${selected === opt ? "ring-2 ring-yellow-400" : ""}`}
+
             dangerouslySetInnerHTML={{ __html: opt }}
           />
         ))}
@@ -56,3 +65,4 @@ export default function QuestionCard({ question, onAnswer, dark, timeLeft }) {
     </div>
   )
 }
+
