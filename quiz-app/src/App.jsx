@@ -226,7 +226,7 @@ export default function App() {
     GitHub
   </a>
   <a
-    href="https://twitter.com/0xsaltie"
+    href="https://twitter.com/oniyorjr"
     target="_blank"
     rel="noopener noreferrer"
     className="underline hover:text-blue-500"
