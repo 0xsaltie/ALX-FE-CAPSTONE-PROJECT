@@ -96,7 +96,7 @@ src/
 │   ├── QuestionCard.jsx
 │   ├── ScoreSummary.jsx
 │   ├── QuizHistory.jsx
-│   └── ProgressBar.jsx
+│   └── SearchBar.jsx
 ├── firebase.js
 ├── App.jsx
 ├── main.jsx
