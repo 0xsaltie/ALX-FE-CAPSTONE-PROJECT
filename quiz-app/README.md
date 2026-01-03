@@ -110,7 +110,7 @@ src/
 ### 1️⃣ Clone the Repository
 
 ```bash
-git clone https://github.com/0xsaltie/quiz-app.git
+git clone https://github.com/0xsaltie/ALX-FE-CAPSTONE-PROJECT/tree/main/quiz-app
 cd quiz-app
 ```
 
